@@ -1,0 +1,98 @@
+{
+  "project": "Coastline PMS",
+  "theme": "Light Theme",
+  "archetype": "Archetype 4 (Swiss & High-Contrast) blended with Archetype 1 (Organic & Earthy) for Coastal SaaS",
+  "vibe_description": "Clean, modern, heavily utilizing whitespace. It merges the structural precision and data clarity of Stripe (crisp typography, subtle 1px borders, deep navy tones) with the approachable, photo-first, breathable design of Airbnb (rounded photo cards, generous padding, intuitive workflows). Avoid 2010 enterprise clutter.",
+  "colors": {
+    "background_app": "#F9FAFB",
+    "surface_card": "#FFFFFF",
+    "primary_brand": "#0A2540",
+    "primary_action": "#0066FF",
+    "accent_storm": "#FF5A5F",
+    "success_ready": "#10B981",
+    "text_main": "#111827",
+    "text_muted": "#6B7280",
+    "border_subtle": "#E5E7EB",
+    "coastal_sage": "#17803D"
+  },
+  "typography": {
+    "font_heading": "Cabinet Grotesk, sans-serif",
+    "font_body": "Inter, sans-serif",
+    "rules": {
+      "h1": "text-4xl sm:text-5xl font-bold tracking-tight text-[#0A2540]",
+      "h2": "text-2xl sm:text-3xl font-semibold tracking-tight text-[#111827]",
+      "h3": "text-xl font-medium text-[#111827]",
+      "body": "text-base leading-relaxed text-[#4B5563]",
+      "labels": "text-xs font-bold tracking-wider uppercase text-[#6B7280]"
+    }
+  },
+  "layout_and_spacing": {
+    "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+    "spacing_scale": "Use 2-3x more spacing than typical. Cards must have p-6 or p-8.",
+    "dashboard_grid": "Use Mode B 'Control Room Grid': grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6. Tight gaps, utilized space.",
+    "field_app_mobile": "Mobile-first. Use bottom tab navigation or simple top-left hamburger. Single-column layouts, enormous touch targets (min 48px height), prominent English/Spanish toggles."
+  },
+  "components": {
+    "cards": "Cardless or completely flat surfaces. 1px solid border (#E5E7EB), minimal to no shadow. For photos inside cards, use rounded-lg corners.",
+    "buttons": "Primary: Solid #0A2540 or #0066FF with text-white, px-6 py-3, subtle hover lift. Storm Mode: Solid #FF5A5F. Large buttons for mobile workflows.",
+    "tables": "Clean, border-collapse, ample row padding (py-4), muted text for metadata, high contrast for primary column (property name, owner).",
+    "forms": "Inputs with flat styling, 1px borders, subtle focus rings (focus:ring-2 focus:ring-[#0066FF]). Include clear helper text."
+  },
+  "icons": {
+    "library": "lucide-react",
+    "style": "Stroke width 1.5 or 2, minimal, scale properly with text."
+  },
+  "accessibility_and_testing": {
+    "contrast": "Ensure all text meets minimum 4.5:1 ratio against backgrounds.",
+    "testing_ids": "CRITICAL: All interactive and key informational elements MUST include a 'data-testid' attribute (e.g., data-testid='login-submit', data-testid='storm-mode-toggle', data-testid='upload-photo-btn')."
+  },
+  "media_urls": {
+    "vacation_homes_exteriors": [
+      {
+        "url": "https://images.unsplash.com/photo-1596075610174-8431a5571cc3?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHw0fHxtb2Rlcm4lMjBjb2FzdGFsJTIwdmFjYXRpb24lMjBob21lJTIwZXh0ZXJpb3J8ZW58MHx8fHwxNzgxOTMyMzMxfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Modern coastal home exterior, ideal for property listings or owner portal cover."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1730005523015-422bd53dda0b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHwzfHxtb2Rlcm4lMjBjb2FzdGFsJTIwdmFjYXRpb24lMjBob21lJTIwZXh0ZXJpb3J8ZW58MHx8fHwxNzgxOTMyMzMxfDA&ixlib=rb-4.1.0&q=85",
+        "description": "View of the ocean from a beach house, good for hero sections or unified inbox background."
+      }
+    ],
+    "interiors": [
+      {
+        "url": "https://images.unsplash.com/photo-1779903726439-5c27e3996c8a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDN8MHwxfHNlYXJjaHw0fHxjb2FzdGFsJTIwaW50ZXJpb3IlMjBsaXZpbmclMjByb29tfGVufDB8fHx8MTc4MTkzMjMzMXww&ixlib=rb-4.1.0&q=85",
+        "description": "Modern dining area with ocean view, perfect for 'Guest Ready' thumbnails."
+      },
+      {
+        "url": "https://images.pexels.com/photos/14495875/pexels-photo-14495875.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Elegant coastal-themed living room."
+      }
+    ],
+    "housekeeping_and_maintenance": [
+      {
+        "url": "https://images.unsplash.com/photo-1621905251918-48416bd8575a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODh8MHwxfHNlYXJjaHwyfHxtYWludGVuYW5jZSUyMHdvcmtlciUyMGh2YWN8ZW58MHx8fHwxNzgxOTMyMzMxfDA&ixlib=rb-4.1.0&q=85",
+        "description": "Maintenance worker repairing unit. Use for visual maintenance logs or task avatars."
+      },
+      {
+        "url": "https://images.pexels.com/photos/9462743/pexels-photo-9462743.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Housekeeper changing linens. Good for housekeeping dashboards."
+      }
+    ],
+    "storm_mode_events": [
+      {
+        "url": "https://images.pexels.com/photos/14332267/pexels-photo-14332267.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Stormy ocean waves. Use as banner background when 'Storm Mode' is activated."
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the Stripe meets Airbnb aesthetic: clean layout with 1px borders, ample whitespace, crisp Cabinet Grotesk headings, and soft rounded images.",
+    "Implement role-based layouts: The Operations & Owner portals should look like data-dense, highly polished SaaS dashboards (charts, tables, hold calendars, split-ledger trust accounting views).",
+    "The Field App (Housekeepers/Maintenance) MUST be heavily mobile-first: simple task feeds, large tap targets, massive 'Upload Photo' buttons for before/after logs, and a clear English/Spanish toggle.",
+    "Coastal Maintenance Engine: Build the predictive scheduling views (e.g., 60-day salt-corrosion checks).",
+    "Storm Mode Workflow: When activated, shift UI accents to Coral (#FF5A5F) and display high-priority hurricane prep dispatch lists.",
+    "Communications Hub: Build a unified inbox thread view consolidating multiple platforms (Airbnb, VRBO) with AI-drafted reply suggestions.",
+    "Trust Accounting: Show a split-ledger view separating Owner Payouts, PMC Commission, Cleaning Fees, and Taxes.",
+    "Ensure 'data-testid' is attached to all inputs, buttons, and significant UI elements for end-to-end testing.",
+    "Do NOT use any placeholder images; rely exclusively on the URLs provided in this file."
+  ]
+}
