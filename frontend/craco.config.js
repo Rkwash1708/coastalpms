@@ -61,6 +61,21 @@ let webpackConfig = {
 };
 
 webpackConfig.devServer = (devServerConfig) => {
+  // webpack-dev-server v5 removed these v4-era options; react-scripts still injects them.
+  delete devServerConfig.onBeforeSetupMiddleware;
+  delete devServerConfig.onAfterSetupMiddleware;
+  delete devServerConfig.https;
+  delete devServerConfig.public;
+  delete devServerConfig.sockHost;
+  delete devServerConfig.sockPath;
+  delete devServerConfig.sockPort;
+  delete devServerConfig.writeToDisk;
+  delete devServerConfig.overlay;
+  delete devServerConfig.clientLogLevel;
+  delete devServerConfig.stats;
+  delete devServerConfig.transportMode;
+  delete devServerConfig.injectClient;
+
   // Add health check endpoints if enabled
   if (config.enableHealthCheck && setupHealthEndpoints && healthPluginInstance) {
     const originalSetupMiddlewares = devServerConfig.setupMiddlewares;

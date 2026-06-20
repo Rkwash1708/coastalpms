@@ -1,0 +1,39 @@
+{
+  "summary": "End-to-end testing of Coastline PMS across backend (26 pytest cases) and frontend (manager, owner, housekeeper, maintenance flows). All major features pass: auth/role routing, dashboard, properties, maintenance filters + creation, storm activate/standdown (banner + hurricane prep tasks dispatched), inbox + AI draft (real Emergent LLM gpt-5.4, 246-char reply generated), trust accounting (5 split cards + 100+ ledger rows), owner portal (revenue/payout/ROI cards, holds CRUD, maintenance evidence cards), field app (housekeeper EN/ES toggle confirmed switching to Spanish, maintenance cards with before/after/complete buttons, storm tasks with coral styling + checklist).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ManagerDashboard", "issue": "After clicking storm-deactivate-btn, the storm-name-input form does not re-render on the dashboard until a full page reload. The dashboard summary state isn't refetched after stand-down.", "selector": "[data-testid=\"storm-name-input\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_coastline_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Optional: After POST /api/storm/activate (active=false), re-fetch /api/dashboard/summary in ManagerDashboard so the storm activation form re-appears without a page refresh.",
+    "Optional: review_request used selectors like 'login-email-input'/'login-submit-btn'/'storm-name-input'; the app uses 'login-email','login-password','login-submit'. Most other testids (storm-name-input, activate-storm-btn, ai-draft-btn, reply-input, send-reply-btn, mt-complete-btn, hk-upload-btn, hk-file-input, add-hold-btn, new-task-btn, lang-toggle, storm-deactivate-btn) match the request exactly. No action needed unless the spec is strict."
+  ],
+  "critical_code_review_comments": [
+    "require_roles() automatically allows manager regardless of declared roles — fine for this app's hierarchy but worth documenting.",
+    "Storm activation does not roll back the database state when previously-created storm_prep tasks remain after stand-down. They stay 'open' assigned to staff, which is probably intentional (so crews complete prep) but may want a manager UI toggle to bulk-cancel.",
+    "AI endpoints have no rate limit or per-thread caching. Manager could spam /api/ai/draft-reply. Consider light debouncing or per-user quota.",
+    "/api/auth/login could leak whether email exists vs wrong password via error timing; currently both return same 401 message which is good.",
+    "MongoDB '_id' is correctly excluded in all read paths via projection {\"_id\":0}."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_coastline_api.py",
+    "/app/backend/tests/__init__.py"
+  ],
+  "success_rate": {"backend": "100% (26/26)", "frontend": "~95% (all critical flows pass; only minor storm form re-render quirk)"},
+  "test_credentials": "manager@coastline.com/Manager123, maria@coastline.com/Field123 (housekeeper), carlos@coastline.com/Field123 (maintenance), owner@coastline.com/Owner123",
+  "seed_data_creation": "Backend tests created a few TEST_-prefixed maintenance tasks and an owner hold via existing endpoints. Storm was activated as 'TEST_Hermine' / 'TEST_Idalia' during tests and then stood down via the manager dashboard. Hurricane Prep tasks dispatched to staff (visible in maintenance list).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest at /app/backend/tests/test_coastline_api.py (26 tests) is the regression baseline. Frontend playwright flow verified across all 4 roles via REACT_APP_BACKEND_URL=https://coastal-ops.preview.emergentagent.com. AI endpoints take ~5-10s; poll up to 30s. The only minor UI quirk found: storm form (storm-name-input) does not auto re-render in ManagerDashboard after storm stand-down; need full reload."
+}

@@ -1,0 +1,171 @@
+import { useEffect, useState } from "react";
+import { api, fmtMoney, fmtDate } from "@/lib/api";
+import {
+  TrendingUp, Building2, PiggyBank, CalendarPlus, Image as ImageIcon, Trash2, Plus,
+} from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell,
+} from "recharts";
+
+export default function OwnerPortal() {
+  const [fin, setFin] = useState(null);
+  const [logs, setLogs] = useState([]);
+  const [holds, setHolds] = useState([]);
+  const [props, setProps] = useState([]);
+  const [show, setShow] = useState(false);
+  const [form, setForm] = useState({ property_id: "", start_date: "", end_date: "", note: "" });
+
+  const load = () => {
+    api.get("/owner/financials").then((r) => setFin(r.data));
+    api.get("/maintenance").then((r) => setLogs(r.data.filter((m) => m.before_photo || m.after_photo)));
+    api.get("/owner/holds").then((r) => setHolds(r.data));
+    api.get("/properties").then((r) => setProps(r.data));
+  };
+  useEffect(() => {
+    load();
+  }, []);
+
+  const addHold = async () => {
+    if (!form.property_id || !form.start_date || !form.end_date) return;
+    await api.post("/owner/holds", {
+      ...form,
+      start_date: new Date(form.start_date).toISOString(),
+      end_date: new Date(form.end_date).toISOString(),
+    });
+    setShow(false);
+    setForm({ property_id: "", start_date: "", end_date: "", note: "" });
+    load();
+  };
+
+  const delHold = async (id) => {
+    await api.delete(`/owner/holds/${id}`);
+    load();
+  };
+
+  const s = fin?.summary || {};
+  const monthly = (fin?.monthly || []).map((m) => ({
+    name: new Date(m.month + "-01").toLocaleDateString("en-US", { month: "short" }),
+    payout: Math.round(m.owner_payout),
+  }));
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="text-xs font-bold tracking-wider uppercase text-[#6B7280]">Owner Portal</div>
+      <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-[#0A2540] mt-1">Your Portfolio</h1>
+      <p className="text-[#6B7280] mt-2">Real-time ROI, evidence-backed expenses, and your own vacation holds — zero phone calls.</p>
+
+      {/* Summary */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mt-6">
+        <div data-testid="owner-revenue" className="rounded-xl border border-[#E5E7EB] bg-white p-6">
+          <div className="h-10 w-10 rounded-lg bg-[#0066FF]/10 text-[#0066FF] flex items-center justify-center"><TrendingUp className="h-5 w-5" /></div>
+          <div className="mt-4 text-3xl font-display font-bold text-[#0A2540]">{fmtMoney(s.gross_revenue)}</div>
+          <div className="text-sm text-[#6B7280] mt-1">Gross Revenue (6 mo)</div>
+        </div>
+        <div data-testid="owner-payout" className="rounded-xl border border-[#E5E7EB] bg-white p-6">
+          <div className="h-10 w-10 rounded-lg bg-[#10B981]/10 text-[#10B981] flex items-center justify-center"><PiggyBank className="h-5 w-5" /></div>
+          <div className="mt-4 text-3xl font-display font-bold text-[#0A2540]">{fmtMoney(s.owner_payout)}</div>
+          <div className="text-sm text-[#6B7280] mt-1">Your Net Payout</div>
+        </div>
+        <div data-testid="owner-roi" className="rounded-xl border border-[#E5E7EB] bg-gradient-to-br from-[#0A2540] to-[#0e3a63] text-white p-6">
+          <div className="h-10 w-10 rounded-lg bg-white/15 flex items-center justify-center"><Building2 className="h-5 w-5" /></div>
+          <div className="mt-4 text-3xl font-display font-bold">{s.roi}%</div>
+          <div className="text-sm text-white/80 mt-1">Take-home ratio (YTD)</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mt-5">
+        {/* Payout chart */}
+        <div className="lg:col-span-2 rounded-xl border border-[#E5E7EB] bg-white p-6">
+          <h3 className="font-display text-lg font-semibold text-[#0A2540]">Monthly Payouts</h3>
+          <div className="h-64 mt-4 -ml-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={monthly}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 12, fill: "#6B7280" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 12, fill: "#6B7280" }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+                <Tooltip formatter={(v) => fmtMoney(v)} cursor={{ fill: "#F3F4F6" }} />
+                <Bar dataKey="payout" radius={[6, 6, 0, 0]}>
+                  {monthly.map((_, i) => <Cell key={i} fill="#0066FF" />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Owner holds */}
+        <div className="rounded-xl border border-[#E5E7EB] bg-white p-6">
+          <div className="flex items-center justify-between">
+            <h3 className="font-display text-lg font-semibold text-[#0A2540]">My Holds</h3>
+            <button data-testid="add-hold-btn" onClick={() => setShow(true)} className="flex items-center gap-1 text-xs font-semibold text-[#0066FF] bg-[#0066FF]/10 px-2.5 py-1.5 rounded-full hover:bg-[#0066FF]/20">
+              <Plus className="h-3.5 w-3.5" /> Block dates
+            </button>
+          </div>
+          <div className="mt-4 space-y-3">
+            {holds.map((h) => (
+              <div key={h.id} data-testid="hold-item" className="flex items-center gap-3 rounded-lg bg-[#F9FAFB] px-3 py-2.5">
+                <CalendarPlus className="h-4 w-4 text-[#0A2540] shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-[#111827] truncate">{h.property_name}</div>
+                  <div className="text-xs text-[#6B7280]">{fmtDate(h.start_date)} – {fmtDate(h.end_date)}</div>
+                </div>
+                <button onClick={() => delHold(h.id)} className="text-[#6B7280] hover:text-[#FF5A5F]"><Trash2 className="h-4 w-4" /></button>
+              </div>
+            ))}
+            {holds.length === 0 && <div className="text-sm text-[#6B7280]">No holds yet.</div>}
+          </div>
+        </div>
+      </div>
+
+      {/* Visual maintenance logs */}
+      <div className="mt-5 rounded-xl border border-[#E5E7EB] bg-white p-6">
+        <h3 className="font-display text-lg font-semibold text-[#0A2540]">Maintenance — Photo Evidence</h3>
+        <p className="text-sm text-[#6B7280] mt-1">Every deduction from your payout comes with before/after proof.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+          {logs.map((m) => (
+            <div key={m.id} data-testid="owner-maint-log" className="rounded-xl border border-[#E5E7EB] overflow-hidden">
+              <div className="grid grid-cols-2">
+                {[["before", m.before_photo], ["after", m.after_photo]].map(([lbl, src]) => (
+                  <div key={lbl} className="relative aspect-[4/3] bg-[#F3F4F6]">
+                    {src ? <img src={src} alt={lbl} className="h-full w-full object-cover" /> : <div className="h-full flex items-center justify-center text-[#9CA3AF]"><ImageIcon className="h-6 w-6" /></div>}
+                    <span className="absolute top-2 left-2 text-[10px] font-bold uppercase tracking-wider text-white bg-black/50 px-2 py-0.5 rounded">{lbl}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="p-4 flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-[#111827]">{m.title}</div>
+                  <div className="text-xs text-[#6B7280]">{m.property_name}</div>
+                </div>
+                {m.cost > 0 && <div className="text-sm font-semibold text-[#FF5A5F]">−{fmtMoney(m.cost)}</div>}
+              </div>
+            </div>
+          ))}
+          {logs.length === 0 && <div className="text-sm text-[#6B7280]">No maintenance with photo evidence yet.</div>}
+        </div>
+      </div>
+
+      {show && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShow(false)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-display text-xl font-semibold text-[#0A2540]">Block Your Dates</h3>
+            <div className="space-y-3 mt-4">
+              <select data-testid="hold-property" value={form.property_id} onChange={(e) => setForm({ ...form, property_id: e.target.value })} className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm">
+                <option value="">Select property…</option>
+                {props.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <div className="grid grid-cols-2 gap-3">
+                <input data-testid="hold-start" type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} className="rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm" />
+                <input data-testid="hold-end" type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} className="rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm" />
+              </div>
+              <input placeholder="Note (optional)" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm" />
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={() => setShow(false)} className="px-4 py-2.5 rounded-lg text-sm font-medium text-[#6B7280] hover:bg-[#F3F4F6]">Cancel</button>
+              <button data-testid="hold-save" onClick={addHold} className="px-5 py-2.5 rounded-lg bg-[#0A2540] text-white text-sm font-semibold hover:bg-[#0e3358]">Save Hold</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
