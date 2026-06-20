@@ -14,7 +14,7 @@ export default function StormBanner() {
 
   const deactivate = async () => {
     await api.post("/storm/activate", { active: false });
-    load();
+    window.location.reload();
   };
 
   if (!storm?.active) return null;
