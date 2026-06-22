@@ -24,22 +24,27 @@ Modern, cloud-based Property Management Software for small-to-medium Vacation Re
 ## Implemented (2026-06-20)
 - JWT role-based auth + 7 seeded users; role-based routing (manager/owner/field)
 - Manager Operations dashboard: stat cards, revenue chart, maintenance queue, Storm Mode activate/standdown
-- Properties grid (6 seeded coastal/inland properties)
+- Properties grid (6 seeded coastal/inland properties) + **Rates/Pricing editor** (weekday/weekend/min-nights/cleaning)
 - Coastal Maintenance: predictive (Auto·60d) badges, storm tasks, filters, create-task modal
 - Storm Mode: dispatches hurricane prep checklist tasks to field staff; coral UI accents
 - Unified Inbox: multi-channel threads, real AI draft replies, send
-- Trust Accounting: split-ledger summary + 106-row ledger table
-- Owner Portal: revenue/payout/ROI cards, monthly payout chart, owner holds CRUD, before/after photo evidence
+- Trust Accounting: split-ledger summary + ledger table
+- Owner Portal: revenue/payout/ROI cards, monthly payout chart, owner holds CRUD, before/after photo evidence, **Monthly Owner Statement (on-screen + printable PDF download)**
 - Field App (mobile-first): housekeeping Guest-Ready photo upload, maintenance before/after + complete, EN/ES toggle
-- Verified: 26/26 backend tests pass; all critical frontend flows pass (testing iteration_1)
+- **Reservations & Central Calendar**: multi-property availability grid, create booking (auto-bills split-ledger + auto-creates housekeeping turnover), booking/owner-hold overlap protection (409), upcoming arrivals
+- **Guest CRM**: 14 seeded guests ranked by lifetime value, profile drawer with stay history + editable notes
+- **Reporting & Analytics**: Occupancy %, ADR, RevPAR, Avg LOS, revenue-by-month bar, revenue-by-channel pie, property leaderboard
+- Verified: iteration_1 26/26 + iteration_2 41/41 backend tests pass; all critical frontend flows pass
 
 ## Backlog (prioritized)
 - P1: GPS tracking for storm-dispatched field staff (problem statement mentions it)
-- P1: Owner holds should block/validate against booking calendar
-- P2: AI reply rate limiting / debounce
+- P1: Channel manager — real Airbnb/VRBO/Booking.com sync (currently channel-tagged bookings)
+- P2: Booking engine / direct-booking website + Stripe payments
+- P2: Automated guest messaging templates & scheduled messages
 - P2: Object storage for photos (currently base64 in Mongo) — move to S3 for scale
-- P2: Real channel integrations (Airbnb/VRBO/Twilio SMS) — currently seeded threads
-- P2: Bulk-cancel storm tasks on stand-down via manager UI
+- P2: Reviews management; digital guidebook / check-in instructions
+- P2: Split server.py into routers (bookings/guests/reports) as it grows
+- P2: Guest upsert should match on email/phone, not name alone
 
 ## Next Tasks
 - Confirm with user which P1 to tackle next (GPS field tracking vs. holds-calendar validation)

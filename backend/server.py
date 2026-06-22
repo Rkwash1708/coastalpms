@@ -623,6 +623,14 @@ async def create_booking(inp: BookingCreate, user: dict = Depends(require_roles(
     if overlap:
         raise HTTPException(status_code=409, detail="Dates overlap an existing reservation")
 
+    # also block double-booking over an owner hold
+    holds = await db.holds.find({"property_id": inp.property_id}, {"_id": 0}).to_list(500)
+    for h in holds:
+        h_start = h["start_date"][:10]
+        h_end = h["end_date"][:10]
+        if h_start < inp.check_out and h_end > inp.check_in:
+            raise HTTPException(status_code=409, detail="Dates overlap an owner hold")
+
     nightly = inp.nightly if inp.nightly is not None else prop.get("nightly", 250)
     cleaning_fee = prop.get("cleaning_fee", 150)
     splits = compute_splits(nightly, nights, cleaning_fee)
