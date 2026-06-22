@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 2 (Reservations, Guests CRM, Reports, Owner Statement, Rates) tested end-to-end. Backend: 15/15 new pytest cases + 26/26 regression cases = 41/41 PASS. Frontend: all new pages render and integrate with API. Manager sidebar shows expected 8 sections. Booking create→ledger→housekeeping side-effects verified via API. Booking overlap correctly returns 409 and shows booking-error in UI. Guest CRM list (18 guests, ranked by spend, star on top guest), notes edit+save, close drawer all work. Reports page: 5 KPIs (Occupancy/ADR/RevPAR/Avg Length of Stay/Total Revenue), 23 SVG charts, property leaderboard table. Properties rates modal saves and reflects new nightly. Owner statement loads months, switches and downloads. Manager dashboard upcoming_bookings stat shows 24.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Reservations modal", "issues": ["React hydration console warning: '<span> cannot be a child of <option>'. Likely caused by a stray child in <option> rendered tree. Cosmetic only — modal still works end-to-end."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_coastline_v2.py",
+    "/app/backend/tests/test_coastline_api.py",
+    "/app/test_reports/pytest/iter2_results.xml"
+  ],
+  "action_items": [
+    "OPTIONAL/LOW: Investigate Reservations modal hydration warning about <span> child of <option>. Inspect fmtMoney() output or the channel/property option templates; ensure options render only plain text (no nested elements)."
+  ],
+  "critical_code_review_comments": [
+    "compute_splits() ignores cleaning_fee from owner payout subtraction — currently gross - tax - commission = owner_payout. cleaning_fee is tracked separately. Confirm that's the intended trust-accounting convention (matches Lodgify split layout but is worth a one-line comment in code).",
+    "Overlap guard in POST /api/bookings only checks bookings, not owner holds. A manager could double-book over an owner hold. Consider extending the overlap query to db.holds as well.",
+    "POST /api/bookings upserts a guest by 'name' alone — two distinct guests with identical names would be merged. Consider also matching by email/phone before upsert.",
+    "/api/owner/statement uses owner_id only when role=='owner'; manager request returns 'All Owners' aggregate. The download button on the owner portal works fine, but if a manager view of statements is added later, this needs scoping.",
+    "Backend server.py is ~890 lines — still readable but approaching the 'split into modules' threshold (routers/bookings.py, routers/guests.py, routers/reports.py)."
+  ],
+  "updated_files": ["/app/backend/tests/test_coastline_v2.py"],
+  "success_rate": {"backend": "100% (41/41)", "frontend": "100% of iteration_2 features; only 1 cosmetic console warning"},
+  "test_credentials": "manager@coastline.com/Manager123, owner@coastline.com/Owner123, maria@coastline.com/Field123, carlos@coastline.com/Field123",
+  "seed_data_creation": "Created TEST_-prefixed bookings (TEST_Guest_Iter2 2027-08-10→15, TEST_Overlap_A 2027-09-01→05, TEST_FE_Guest 2027-11-10→14) which auto-generated ledger entries and housekeeping turnover tasks. Updated first property's rates to nightly=299/weekend=399/min=2/cleaning=165. Added TEST_FE_VIP_NOTE to top guest. These remain in DB but use future dates so they don't conflict with seeded data and are clearly tagged with TEST_ prefix.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest baseline is now /app/backend/tests/test_coastline_api.py (26 regression) + /app/backend/tests/test_coastline_v2.py (15 iter2). Run with REACT_APP_BACKEND_URL set in env or pass via command. Frontend iter2 pages: /reservations, /guests, /reports + new sections in /properties (rates modal) and /owner (Monthly Statement). All testids exactly match the review_request (new-booking-btn, booking-property/guest/checkin/checkout/save/error, guest-row/notes/save-notes/close, edit-rates-btn, rate-nightly/weekend/minnights/cleaning/save, statement-month/row, download-statement-btn, stat-reservations)."
+}

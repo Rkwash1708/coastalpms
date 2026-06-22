@@ -2,14 +2,18 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import {
   LayoutDashboard, Home, Wrench, Inbox, Wallet, Waves, LogOut, UserCircle2,
+  CalendarRange, Users, BarChart3,
 } from "lucide-react";
 
 const navByRole = {
   manager: [
     { to: "/dashboard", label: "Operations", icon: LayoutDashboard, id: "ops" },
+    { to: "/reservations", label: "Reservations", icon: CalendarRange, id: "reservations" },
     { to: "/properties", label: "Properties", icon: Home, id: "properties" },
+    { to: "/guests", label: "Guests", icon: Users, id: "guests" },
     { to: "/maintenance", label: "Maintenance", icon: Wrench, id: "maintenance" },
     { to: "/inbox", label: "Inbox", icon: Inbox, id: "inbox" },
+    { to: "/reports", label: "Reports", icon: BarChart3, id: "reports" },
     { to: "/accounting", label: "Trust Accounting", icon: Wallet, id: "accounting" },
   ],
   owner: [

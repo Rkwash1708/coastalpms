@@ -13,6 +13,9 @@ import Inbox from "@/pages/Inbox";
 import Accounting from "@/pages/Accounting";
 import OwnerPortal from "@/pages/OwnerPortal";
 import FieldApp from "@/pages/FieldApp";
+import Reservations from "@/pages/Reservations";
+import Guests from "@/pages/Guests";
+import Reports from "@/pages/Reports";
 import { Waves } from "lucide-react";
 
 const roleHome = { manager: "/dashboard", owner: "/owner", housekeeper: "/field", maintenance: "/field" };
@@ -71,9 +74,12 @@ function App() {
               <Route element={<Protected roles={["manager"]} />}>
                 <Route element={<DashboardLayout />}>
                   <Route path="/dashboard" element={<ManagerDashboard />} />
+                  <Route path="/reservations" element={<Reservations />} />
                   <Route path="/properties" element={<Properties />} />
+                  <Route path="/guests" element={<Guests />} />
                   <Route path="/maintenance" element={<Maintenance />} />
                   <Route path="/inbox" element={<Inbox />} />
+                  <Route path="/reports" element={<Reports />} />
                   <Route path="/accounting" element={<Accounting />} />
                 </Route>
               </Route>

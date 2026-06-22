@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, fmtMoney } from "@/lib/api";
 import {
-  Home, Wrench, Sparkles, TrendingUp, AlertTriangle, Waves, ArrowUpRight,
+  Home, Wrench, Sparkles, TrendingUp, AlertTriangle, Waves, ArrowUpRight, CalendarRange,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -83,7 +83,7 @@ export default function ManagerDashboard() {
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mt-6">
         <StatCard testid="stat-revenue" icon={TrendingUp} tone="blue" label="Gross Revenue (6 mo)" value={fmtMoney(summary?.revenue)} sub="Trust-accounted" />
-        <StatCard testid="stat-properties" icon={Home} label="Active Properties" value={summary?.properties ?? "—"} />
+        <StatCard testid="stat-reservations" icon={CalendarRange} label="Upcoming Reservations" value={summary?.upcoming_bookings ?? "—"} />
         <StatCard testid="stat-maintenance" icon={Wrench} tone="storm" label="Open Maintenance" value={summary?.open_maintenance ?? "—"} />
         <StatCard testid="stat-housekeeping" icon={Sparkles} tone="green" label="Turnovers Pending" value={summary?.housekeeping_pending ?? "—"} />
       </div>

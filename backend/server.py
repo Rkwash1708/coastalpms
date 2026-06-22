@@ -161,6 +161,53 @@ class TranslateInput(BaseModel):
     target: str = "es"
 
 
+class BookingCreate(BaseModel):
+    property_id: str
+    guest_name: str
+    guest_email: Optional[str] = None
+    guest_phone: Optional[str] = None
+    check_in: str   # YYYY-MM-DD
+    check_out: str  # YYYY-MM-DD
+    channel: str = "Direct"
+    nightly: Optional[float] = None
+
+
+class BookingStatusUpdate(BaseModel):
+    status: str
+
+
+class RatesUpdate(BaseModel):
+    nightly: Optional[float] = None
+    weekend_nightly: Optional[float] = None
+    min_nights: Optional[int] = None
+    cleaning_fee: Optional[float] = None
+
+
+COMMISSION_RATE = 0.20
+TAX_RATE = 0.11
+
+
+def compute_splits(nightly: float, nights: int, cleaning_fee: float = 150.0):
+    gross = round(nightly * nights, 2)
+    occupancy_tax = round(gross * TAX_RATE, 2)
+    commission = round(gross * COMMISSION_RATE, 2)
+    owner_payout = round(gross - occupancy_tax - commission, 2)
+    return {
+        "gross": gross,
+        "cleaning_fee": round(cleaning_fee, 2),
+        "occupancy_tax": occupancy_tax,
+        "commission": commission,
+        "maintenance_cost": 0.0,
+        "owner_payout": owner_payout,
+    }
+
+
+def nights_between(check_in: str, check_out: str) -> int:
+    d1 = datetime.fromisoformat(check_in)
+    d2 = datetime.fromisoformat(check_out)
+    return max(1, (d2 - d1).days)
+
+
 # ---------------------------------------------------------------------------
 # Auth endpoints
 # ---------------------------------------------------------------------------
@@ -545,6 +592,252 @@ async def ai_translate(inp: TranslateInput, user: dict = Depends(get_current_use
 
 
 # ---------------------------------------------------------------------------
+# Reservations & Central Calendar
+# ---------------------------------------------------------------------------
+@api.get("/bookings")
+async def list_bookings(user: dict = Depends(get_current_user)):
+    q = {}
+    if user["role"] == "owner":
+        owned = await db.properties.find({"owner_id": user["id"]}, {"id": 1, "_id": 0}).to_list(200)
+        q = {"property_id": {"$in": [p["id"] for p in owned]}}
+    bookings = await db.bookings.find(q, {"_id": 0}).sort("check_in", 1).to_list(2000)
+    return bookings
+
+
+@api.post("/bookings")
+async def create_booking(inp: BookingCreate, user: dict = Depends(require_roles("manager"))):
+    prop = await db.properties.find_one({"id": inp.property_id}, {"_id": 0})
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    nights = nights_between(inp.check_in, inp.check_out)
+    if nights < 1:
+        raise HTTPException(status_code=400, detail="Check-out must be after check-in")
+
+    # overlap guard against confirmed bookings + owner holds
+    overlap = await db.bookings.find_one({
+        "property_id": inp.property_id,
+        "status": {"$ne": "cancelled"},
+        "check_in": {"$lt": inp.check_out},
+        "check_out": {"$gt": inp.check_in},
+    })
+    if overlap:
+        raise HTTPException(status_code=409, detail="Dates overlap an existing reservation")
+
+    nightly = inp.nightly if inp.nightly is not None else prop.get("nightly", 250)
+    cleaning_fee = prop.get("cleaning_fee", 150)
+    splits = compute_splits(nightly, nights, cleaning_fee)
+
+    # upsert guest (CRM)
+    guest = await db.guests.find_one({"name": inp.guest_name})
+    if guest:
+        gid = guest["id"]
+        await db.guests.update_one({"id": gid}, {"$set": {
+            "email": inp.guest_email or guest.get("email"),
+            "phone": inp.guest_phone or guest.get("phone"),
+        }})
+    else:
+        gid = new_id()
+        await db.guests.insert_one({
+            "id": gid, "name": inp.guest_name, "email": inp.guest_email,
+            "phone": inp.guest_phone, "notes": "", "created_at": now_iso(),
+        })
+
+    bid = new_id()
+    month = inp.check_in[:7]
+    booking = {
+        "id": bid, "property_id": prop["id"], "property_name": prop["name"],
+        "owner_id": prop["owner_id"], "guest_id": gid, "guest_name": inp.guest_name,
+        "channel": inp.channel, "check_in": inp.check_in, "check_out": inp.check_out,
+        "nights": nights, "nightly": nightly, "status": "confirmed",
+        "month": month, "created_at": now_iso(), **splits,
+    }
+    await db.bookings.insert_one(dict(booking))
+
+    # auto split-ledger entry
+    await db.ledgers.insert_one({
+        "id": new_id(), "booking_id": bid, "property_id": prop["id"], "property_name": prop["name"],
+        "owner_id": prop["owner_id"], "month": month, "date": inp.check_in + "T00:00:00+00:00",
+        "channel": inp.channel, "nights": nights, **splits,
+    })
+
+    # auto housekeeping turnover at check-out
+    await db.housekeeping.insert_one({
+        "id": new_id(), "property_id": prop["id"], "property_name": prop["name"],
+        "image": prop["image"], "assigned_to": None,
+        "turnover_date": inp.check_out + "T11:00:00+00:00",
+        "status": "pending", "photos": [],
+        "checkout_guest": inp.guest_name, "booking_id": bid, "created_at": now_iso(),
+    })
+
+    booking.pop("_id", None)
+    return booking
+
+
+@api.patch("/bookings/{bid}")
+async def update_booking(bid: str, inp: BookingStatusUpdate, user: dict = Depends(require_roles("manager"))):
+    booking = await db.bookings.find_one({"id": bid})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    await db.bookings.update_one({"id": bid}, {"$set": {"status": inp.status}})
+    if inp.status == "cancelled":
+        await db.ledgers.delete_many({"booking_id": bid})
+    return await db.bookings.find_one({"id": bid}, {"_id": 0})
+
+
+@api.get("/calendar")
+async def calendar(user: dict = Depends(get_current_user)):
+    props = await db.properties.find({}, {"_id": 0}).to_list(200)
+    bookings = await db.bookings.find({"status": {"$ne": "cancelled"}}, {"_id": 0}).to_list(2000)
+    holds = await db.holds.find({}, {"_id": 0}).to_list(500)
+    return {"properties": props, "bookings": bookings, "holds": holds}
+
+
+# ---------------------------------------------------------------------------
+# Guest CRM
+# ---------------------------------------------------------------------------
+@api.get("/guests")
+async def list_guests(user: dict = Depends(require_roles("manager"))):
+    guests = await db.guests.find({}, {"_id": 0}).to_list(1000)
+    bookings = await db.bookings.find({}, {"_id": 0}).to_list(2000)
+    by_guest = {}
+    for b in bookings:
+        g = by_guest.setdefault(b["guest_id"], {"stays": 0, "spent": 0.0, "last": None})
+        g["stays"] += 1
+        g["spent"] += b["gross"]
+        if not g["last"] or b["check_in"] > g["last"]:
+            g["last"] = b["check_in"]
+    for g in guests:
+        agg = by_guest.get(g["id"], {"stays": 0, "spent": 0.0, "last": None})
+        g["total_stays"] = agg["stays"]
+        g["total_spent"] = round(agg["spent"], 2)
+        g["last_stay"] = agg["last"]
+    guests.sort(key=lambda x: x["total_spent"], reverse=True)
+    return guests
+
+
+@api.get("/guests/{gid}")
+async def guest_detail(gid: str, user: dict = Depends(require_roles("manager"))):
+    guest = await db.guests.find_one({"id": gid}, {"_id": 0})
+    if not guest:
+        raise HTTPException(status_code=404, detail="Guest not found")
+    stays = await db.bookings.find({"guest_id": gid}, {"_id": 0}).sort("check_in", -1).to_list(200)
+    guest["stays"] = stays
+    guest["total_stays"] = len(stays)
+    guest["total_spent"] = round(sum(s["gross"] for s in stays), 2)
+    return guest
+
+
+@api.patch("/guests/{gid}")
+async def update_guest(gid: str, payload: dict, user: dict = Depends(require_roles("manager"))):
+    await db.guests.update_one({"id": gid}, {"$set": {"notes": payload.get("notes", "")}})
+    return await db.guests.find_one({"id": gid}, {"_id": 0})
+
+
+# ---------------------------------------------------------------------------
+# Reporting & Analytics
+# ---------------------------------------------------------------------------
+@api.get("/reports/analytics")
+async def analytics(user: dict = Depends(require_roles("manager"))):
+    props = await db.properties.find({}, {"_id": 0}).to_list(200)
+    bookings = await db.bookings.find({"status": {"$ne": "cancelled"}}, {"_id": 0}).to_list(3000)
+
+    n_props = max(1, len(props))
+    total_nights = sum(b["nights"] for b in bookings)
+    total_gross = sum(b["gross"] for b in bookings)
+    n_bookings = max(1, len(bookings))
+
+    # occupancy over a 180-day window
+    window_days = 180
+    available_nights = n_props * window_days
+    occupancy = round(min(100.0, total_nights / max(1, available_nights) * 100), 1)
+    adr = round(total_gross / max(1, total_nights), 2)            # avg daily rate
+    revpar = round(total_gross / max(1, available_nights), 2)     # revenue per available room-night
+    avg_los = round(total_nights / n_bookings, 1)                 # length of stay
+
+    # by channel
+    channel = {}
+    for b in bookings:
+        c = channel.setdefault(b["channel"], {"name": b["channel"], "revenue": 0.0, "bookings": 0})
+        c["revenue"] += b["gross"]
+        c["bookings"] += 1
+    channels = [{"name": k, "revenue": round(v["revenue"], 2), "bookings": v["bookings"]} for k, v in channel.items()]
+
+    # by property
+    by_prop = {}
+    for b in bookings:
+        p = by_prop.setdefault(b["property_id"], {"name": b["property_name"], "revenue": 0.0, "nights": 0})
+        p["revenue"] += b["gross"]
+        p["nights"] += b["nights"]
+    properties = [{
+        "name": v["name"], "revenue": round(v["revenue"], 2),
+        "occupancy": round(min(100.0, v["nights"] / window_days * 100), 1),
+    } for v in by_prop.values()]
+    properties.sort(key=lambda x: x["revenue"], reverse=True)
+
+    # monthly revenue trend
+    monthly = {}
+    for b in bookings:
+        monthly[b["month"]] = monthly.get(b["month"], 0.0) + b["gross"]
+    monthly_list = [{"month": k, "revenue": round(v, 2)} for k, v in sorted(monthly.items())]
+
+    return {
+        "kpis": {
+            "occupancy": occupancy, "adr": adr, "revpar": revpar,
+            "avg_los": avg_los, "total_revenue": round(total_gross, 2), "bookings": len(bookings),
+        },
+        "channels": channels,
+        "properties": properties,
+        "monthly": monthly_list,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Owner statement
+# ---------------------------------------------------------------------------
+@api.get("/owner/statement")
+async def owner_statement(month: Optional[str] = None, user: dict = Depends(get_current_user)):
+    owner_id = user["id"] if user["role"] == "owner" else None
+    q = {} if owner_id is None else {"owner_id": owner_id}
+    ledgers = await db.ledgers.find(q, {"_id": 0}).to_list(3000)
+    months = sorted({l["month"] for l in ledgers}, reverse=True)
+    if not month:
+        month = months[0] if months else None
+    rows = [l for l in ledgers if l["month"] == month]
+
+    by_prop = {}
+    totals = {"gross": 0.0, "commission": 0.0, "occupancy_tax": 0.0, "cleaning_fee": 0.0, "maintenance_cost": 0.0, "owner_payout": 0.0}
+    for r in rows:
+        p = by_prop.setdefault(r["property_id"], {"property_name": r["property_name"], "gross": 0.0, "commission": 0.0, "occupancy_tax": 0.0, "maintenance_cost": 0.0, "owner_payout": 0.0, "bookings": 0})
+        for k in ["gross", "commission", "occupancy_tax", "maintenance_cost", "owner_payout"]:
+            p[k] += r.get(k, 0.0)
+        p["bookings"] += 1
+        for k in totals:
+            totals[k] += r.get(k, 0.0)
+    totals = {k: round(v, 2) for k, v in totals.items()}
+    properties = [{k: (round(v, 2) if isinstance(v, float) else v) for k, v in p.items()} for p in by_prop.values()]
+
+    owner = await db.users.find_one({"id": (owner_id or rows[0]["owner_id"]) if rows else owner_id}, {"_id": 0, "password_hash": 0}) if (owner_id or rows) else None
+    return {
+        "month": month, "available_months": months,
+        "owner_name": owner["name"] if owner else "All Owners",
+        "properties": properties, "totals": totals,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Rates & pricing
+# ---------------------------------------------------------------------------
+@api.patch("/properties/{pid}/rates")
+async def update_rates(pid: str, inp: RatesUpdate, user: dict = Depends(require_roles("manager"))):
+    prop = await db.properties.find_one({"id": pid})
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    updates = {k: v for k, v in inp.model_dump().items() if v is not None}
+    await db.properties.update_one({"id": pid}, {"$set": updates})
+    return await db.properties.find_one({"id": pid}, {"_id": 0})
+
+
+# ---------------------------------------------------------------------------
 # Manager dashboard summary
 # ---------------------------------------------------------------------------
 @api.get("/dashboard/summary")
@@ -553,9 +846,11 @@ async def dashboard_summary(user: dict = Depends(get_current_user)):
     open_maint = await db.maintenance.count_documents({"status": {"$ne": "completed"}})
     storm_tasks = await db.maintenance.count_documents({"category": "storm_prep", "status": {"$ne": "completed"}})
     hk_pending = await db.housekeeping.count_documents({"status": {"$ne": "guest_ready"}})
-    ledgers = await db.ledgers.find({}, {"_id": 0}).to_list(2000)
+    ledgers = await db.ledgers.find({}, {"_id": 0}).to_list(5000)
     mtd = sum(l["gross"] for l in ledgers)
     payouts = sum(l["owner_payout"] for l in ledgers)
+    today = datetime.now(timezone.utc).date().isoformat()
+    upcoming = await db.bookings.count_documents({"check_in": {"$gte": today}, "status": {"$ne": "cancelled"}})
     storm = await db.storm.find_one({"id": "global"}, {"_id": 0})
     return {
         "properties": props,
@@ -564,6 +859,7 @@ async def dashboard_summary(user: dict = Depends(get_current_user)):
         "housekeeping_pending": hk_pending,
         "revenue": round(mtd, 2),
         "owner_payouts": round(payouts, 2),
+        "upcoming_bookings": upcoming,
         "storm_active": bool(storm and storm.get("active")),
         "storm_name": storm.get("storm_name") if storm else None,
     }
