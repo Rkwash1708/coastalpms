@@ -17,6 +17,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
+from emergentintegrations.payments.stripe.checkout import (
+    StripeCheckout, CheckoutSessionRequest, CheckoutStatusResponse,
+)
 
 # ---------------------------------------------------------------------------
 # Setup
@@ -28,6 +31,7 @@ db = client[os.environ['DB_NAME']]
 JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALGORITHM = "HS256"
 EMERGENT_LLM_KEY = os.environ['EMERGENT_LLM_KEY']
+STRIPE_API_KEY = os.environ['STRIPE_API_KEY']
 
 app = FastAPI(title="Coastline PMS")
 api = APIRouter(prefix="/api")
@@ -181,6 +185,15 @@ class RatesUpdate(BaseModel):
     weekend_nightly: Optional[float] = None
     min_nights: Optional[int] = None
     cleaning_fee: Optional[float] = None
+
+
+class CheckoutInput(BaseModel):
+    property_id: str
+    guest_name: str
+    guest_email: str
+    check_in: str
+    check_out: str
+    origin_url: str
 
 
 COMMISSION_RATE = 0.20
@@ -594,6 +607,71 @@ async def ai_translate(inp: TranslateInput, user: dict = Depends(get_current_use
 # ---------------------------------------------------------------------------
 # Reservations & Central Calendar
 # ---------------------------------------------------------------------------
+async def _check_availability(property_id: str, check_in: str, check_out: str):
+    overlap = await db.bookings.find_one({
+        "property_id": property_id,
+        "status": {"$ne": "cancelled"},
+        "check_in": {"$lt": check_out},
+        "check_out": {"$gt": check_in},
+    })
+    if overlap:
+        raise HTTPException(status_code=409, detail="Dates overlap an existing reservation")
+    holds = await db.holds.find({"property_id": property_id}, {"_id": 0}).to_list(500)
+    for h in holds:
+        if h["start_date"][:10] < check_out and h["end_date"][:10] > check_in:
+            raise HTTPException(status_code=409, detail="Dates overlap an owner hold")
+
+
+async def _create_booking_record(prop, guest_name, guest_email, guest_phone, check_in, check_out, channel, nightly=None):
+    nights = nights_between(check_in, check_out)
+    if nights < 1:
+        raise HTTPException(status_code=400, detail="Check-out must be after check-in")
+    await _check_availability(prop["id"], check_in, check_out)
+
+    nightly = nightly if nightly is not None else prop.get("nightly", 250)
+    cleaning_fee = prop.get("cleaning_fee", 150)
+    splits = compute_splits(nightly, nights, cleaning_fee)
+
+    guest = await db.guests.find_one({"name": guest_name})
+    if guest:
+        gid = guest["id"]
+        await db.guests.update_one({"id": gid}, {"$set": {
+            "email": guest_email or guest.get("email"),
+            "phone": guest_phone or guest.get("phone"),
+        }})
+    else:
+        gid = new_id()
+        await db.guests.insert_one({
+            "id": gid, "name": guest_name, "email": guest_email,
+            "phone": guest_phone, "notes": "", "created_at": now_iso(),
+        })
+
+    bid = new_id()
+    month = check_in[:7]
+    booking = {
+        "id": bid, "property_id": prop["id"], "property_name": prop["name"],
+        "owner_id": prop["owner_id"], "guest_id": gid, "guest_name": guest_name,
+        "channel": channel, "check_in": check_in, "check_out": check_out,
+        "nights": nights, "nightly": nightly, "status": "confirmed",
+        "month": month, "created_at": now_iso(), **splits,
+    }
+    await db.bookings.insert_one(dict(booking))
+    await db.ledgers.insert_one({
+        "id": new_id(), "booking_id": bid, "property_id": prop["id"], "property_name": prop["name"],
+        "owner_id": prop["owner_id"], "month": month, "date": check_in + "T00:00:00+00:00",
+        "channel": channel, "nights": nights, **splits,
+    })
+    await db.housekeeping.insert_one({
+        "id": new_id(), "property_id": prop["id"], "property_name": prop["name"],
+        "image": prop["image"], "assigned_to": None,
+        "turnover_date": check_out + "T11:00:00+00:00",
+        "status": "pending", "photos": [],
+        "checkout_guest": guest_name, "booking_id": bid, "created_at": now_iso(),
+    })
+    booking.pop("_id", None)
+    return booking
+
+
 @api.get("/bookings")
 async def list_bookings(user: dict = Depends(get_current_user)):
     q = {}
@@ -609,76 +687,10 @@ async def create_booking(inp: BookingCreate, user: dict = Depends(require_roles(
     prop = await db.properties.find_one({"id": inp.property_id}, {"_id": 0})
     if not prop:
         raise HTTPException(status_code=404, detail="Property not found")
-    nights = nights_between(inp.check_in, inp.check_out)
-    if nights < 1:
-        raise HTTPException(status_code=400, detail="Check-out must be after check-in")
-
-    # overlap guard against confirmed bookings + owner holds
-    overlap = await db.bookings.find_one({
-        "property_id": inp.property_id,
-        "status": {"$ne": "cancelled"},
-        "check_in": {"$lt": inp.check_out},
-        "check_out": {"$gt": inp.check_in},
-    })
-    if overlap:
-        raise HTTPException(status_code=409, detail="Dates overlap an existing reservation")
-
-    # also block double-booking over an owner hold
-    holds = await db.holds.find({"property_id": inp.property_id}, {"_id": 0}).to_list(500)
-    for h in holds:
-        h_start = h["start_date"][:10]
-        h_end = h["end_date"][:10]
-        if h_start < inp.check_out and h_end > inp.check_in:
-            raise HTTPException(status_code=409, detail="Dates overlap an owner hold")
-
-    nightly = inp.nightly if inp.nightly is not None else prop.get("nightly", 250)
-    cleaning_fee = prop.get("cleaning_fee", 150)
-    splits = compute_splits(nightly, nights, cleaning_fee)
-
-    # upsert guest (CRM)
-    guest = await db.guests.find_one({"name": inp.guest_name})
-    if guest:
-        gid = guest["id"]
-        await db.guests.update_one({"id": gid}, {"$set": {
-            "email": inp.guest_email or guest.get("email"),
-            "phone": inp.guest_phone or guest.get("phone"),
-        }})
-    else:
-        gid = new_id()
-        await db.guests.insert_one({
-            "id": gid, "name": inp.guest_name, "email": inp.guest_email,
-            "phone": inp.guest_phone, "notes": "", "created_at": now_iso(),
-        })
-
-    bid = new_id()
-    month = inp.check_in[:7]
-    booking = {
-        "id": bid, "property_id": prop["id"], "property_name": prop["name"],
-        "owner_id": prop["owner_id"], "guest_id": gid, "guest_name": inp.guest_name,
-        "channel": inp.channel, "check_in": inp.check_in, "check_out": inp.check_out,
-        "nights": nights, "nightly": nightly, "status": "confirmed",
-        "month": month, "created_at": now_iso(), **splits,
-    }
-    await db.bookings.insert_one(dict(booking))
-
-    # auto split-ledger entry
-    await db.ledgers.insert_one({
-        "id": new_id(), "booking_id": bid, "property_id": prop["id"], "property_name": prop["name"],
-        "owner_id": prop["owner_id"], "month": month, "date": inp.check_in + "T00:00:00+00:00",
-        "channel": inp.channel, "nights": nights, **splits,
-    })
-
-    # auto housekeeping turnover at check-out
-    await db.housekeeping.insert_one({
-        "id": new_id(), "property_id": prop["id"], "property_name": prop["name"],
-        "image": prop["image"], "assigned_to": None,
-        "turnover_date": inp.check_out + "T11:00:00+00:00",
-        "status": "pending", "photos": [],
-        "checkout_guest": inp.guest_name, "booking_id": bid, "created_at": now_iso(),
-    })
-
-    booking.pop("_id", None)
-    return booking
+    return await _create_booking_record(
+        prop, inp.guest_name, inp.guest_email, inp.guest_phone,
+        inp.check_in, inp.check_out, inp.channel, inp.nightly,
+    )
 
 
 @api.patch("/bookings/{bid}")
@@ -843,6 +855,153 @@ async def update_rates(pid: str, inp: RatesUpdate, user: dict = Depends(require_
     updates = {k: v for k, v in inp.model_dump().items() if v is not None}
     await db.properties.update_one({"id": pid}, {"$set": updates})
     return await db.properties.find_one({"id": pid}, {"_id": 0})
+
+
+# ---------------------------------------------------------------------------
+# Public direct-booking website + Stripe checkout
+# ---------------------------------------------------------------------------
+def guest_total(prop, nights):
+    splits = compute_splits(prop.get("nightly", 250), nights, prop.get("cleaning_fee", 150))
+    total = round(splits["gross"] + splits["cleaning_fee"] + splits["occupancy_tax"], 2)
+    return splits, total
+
+
+@api.get("/public/properties")
+async def public_properties():
+    props = await db.properties.find({}, {"_id": 0, "owner_id": 0, "owner_name": 0, "occupancy": 0}).to_list(200)
+    return props
+
+
+@api.get("/public/quote")
+async def public_quote(property_id: str, check_in: str, check_out: str):
+    prop = await db.properties.find_one({"id": property_id}, {"_id": 0})
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    nights = nights_between(check_in, check_out)
+    if nights < 1:
+        raise HTTPException(status_code=400, detail="Check-out must be after check-in")
+    splits, total = guest_total(prop, nights)
+    # availability (does not raise — returns flag)
+    available = True
+    try:
+        await _check_availability(property_id, check_in, check_out)
+    except HTTPException:
+        available = False
+    return {
+        "property_name": prop["name"], "nights": nights, "nightly": prop["nightly"],
+        "accommodation": splits["gross"], "cleaning_fee": splits["cleaning_fee"],
+        "occupancy_tax": splits["occupancy_tax"], "total": total, "available": available,
+    }
+
+
+@api.post("/public/checkout")
+async def public_checkout(inp: CheckoutInput, request: Request):
+    prop = await db.properties.find_one({"id": inp.property_id}, {"_id": 0})
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    nights = nights_between(inp.check_in, inp.check_out)
+    if nights < 1:
+        raise HTTPException(status_code=400, detail="Check-out must be after check-in")
+    # block clearly unavailable dates up front
+    await _check_availability(inp.property_id, inp.check_in, inp.check_out)
+
+    _, total = guest_total(prop, nights)  # amount computed server-side ONLY
+
+    host_url = str(request.base_url)
+    webhook_url = f"{host_url}api/webhook/stripe"
+    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=webhook_url)
+
+    origin = inp.origin_url.rstrip("/")
+    success_url = f"{origin}/book/success?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{origin}/book"
+
+    metadata = {
+        "type": "booking",
+        "property_id": inp.property_id,
+        "guest_name": inp.guest_name,
+        "guest_email": inp.guest_email,
+        "check_in": inp.check_in,
+        "check_out": inp.check_out,
+    }
+    req = CheckoutSessionRequest(
+        amount=float(total), currency="usd",
+        success_url=success_url, cancel_url=cancel_url, metadata=metadata,
+    )
+    session = await stripe_checkout.create_checkout_session(req)
+
+    await db.payment_transactions.insert_one({
+        "id": new_id(), "session_id": session.session_id,
+        "amount": float(total), "currency": "usd",
+        "status": "initiated", "payment_status": "pending",
+        "metadata": metadata, "booking_id": None,
+        "created_at": now_iso(), "updated_at": now_iso(),
+    })
+    return {"url": session.url, "session_id": session.session_id}
+
+
+async def _finalize_payment(session_id: str, status: str, payment_status: str):
+    """Idempotently update the transaction and create the booking on first paid."""
+    txn = await db.payment_transactions.find_one({"session_id": session_id})
+    if not txn:
+        return None
+    await db.payment_transactions.update_one(
+        {"session_id": session_id},
+        {"$set": {"status": status, "payment_status": payment_status, "updated_at": now_iso()}},
+    )
+    if payment_status == "paid" and not txn.get("booking_id"):
+        meta = txn.get("metadata", {})
+        prop = await db.properties.find_one({"id": meta.get("property_id")}, {"_id": 0})
+        if prop:
+            try:
+                booking = await _create_booking_record(
+                    prop, meta.get("guest_name"), meta.get("guest_email"), None,
+                    meta.get("check_in"), meta.get("check_out"), "Direct",
+                )
+                await db.payment_transactions.update_one(
+                    {"session_id": session_id}, {"$set": {"booking_id": booking["id"]}}
+                )
+                return booking
+            except HTTPException:
+                # dates became unavailable between checkout and payment — flag for refund handling
+                await db.payment_transactions.update_one(
+                    {"session_id": session_id}, {"$set": {"status": "needs_review"}}
+                )
+    return None
+
+
+@api.get("/public/checkout/status/{session_id}")
+async def public_checkout_status(session_id: str, request: Request):
+    txn = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    if txn.get("payment_status") != "paid":
+        host_url = str(request.base_url)
+        stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=f"{host_url}api/webhook/stripe")
+        result: CheckoutStatusResponse = await stripe_checkout.get_checkout_status(session_id)
+        await _finalize_payment(session_id, result.status, result.payment_status)
+        txn = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    booking = None
+    if txn.get("booking_id"):
+        booking = await db.bookings.find_one({"id": txn["booking_id"]}, {"_id": 0})
+    return {
+        "status": txn["status"], "payment_status": txn["payment_status"],
+        "amount": txn["amount"], "metadata": txn.get("metadata", {}), "booking": booking,
+    }
+
+
+@api.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    body = await request.body()
+    sig = request.headers.get("Stripe-Signature")
+    host_url = str(request.base_url)
+    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=f"{host_url}api/webhook/stripe")
+    try:
+        event = await stripe_checkout.handle_webhook(body, sig)
+        await _finalize_payment(event.session_id, "complete", event.payment_status)
+    except Exception as e:
+        logger.exception("Stripe webhook error")
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"received": True}
 
 
 # ---------------------------------------------------------------------------

@@ -16,6 +16,8 @@ import FieldApp from "@/pages/FieldApp";
 import Reservations from "@/pages/Reservations";
 import Guests from "@/pages/Guests";
 import Reports from "@/pages/Reports";
+import BookingSite from "@/pages/BookingSite";
+import BookingSuccess from "@/pages/BookingSuccess";
 import { Waves } from "lucide-react";
 
 const roleHome = { manager: "/dashboard", owner: "/owner", housekeeper: "/field", maintenance: "/field" };
@@ -69,6 +71,8 @@ function App() {
             <Routes>
               <Route path="/" element={<RootRedirect />} />
               <Route path="/login" element={<Login />} />
+              <Route path="/book" element={<BookingSite />} />
+              <Route path="/book/success" element={<BookingSuccess />} />
 
               {/* Manager workspace */}
               <Route element={<Protected roles={["manager"]} />}>

@@ -1,0 +1,56 @@
+{
+  "summary": "Tested the new PUBLIC direct-booking + Stripe Checkout feature end-to-end. Backend: 16/17 pytest cases pass (test_public_booking.py). Frontend Playwright flow walks /book → property cards → booking drawer → server-side quote → real Stripe redirect (cs_test_... session created). Regression tests for manager APIs (bookings, ledger, housekeeping, guests, reports, owner statement, rates) all pass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/public/quote",
+        "issue": "Returns 200 (nights=1) when check_out < check_in instead of 400. Root cause: nights_between() uses max(1, days) so the `if nights < 1` guard in /public/quote can never fire. Compare with /public/checkout which calls _check_availability and still validates date order indirectly. Recommend computing raw days first; if days<1 raise HTTP 400, then clamp."
+      },
+      {
+        "endpoint": "GET /api/public/properties",
+        "issue": "Endpoint hides owner_id/owner_name but still exposes other internal fields like cleaning_fee, weekend_nightly, min_nights — acceptable but worth a privacy review."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "BookingSite quote breakdown",
+        "issue": "fmtMoney truncates cents — total displays as $1,824 while the amount actually charged via Stripe is $1,824.45. Tax line shows $164 vs real 164.45. Customers may notice a discrepancy on the Stripe page. Suggest formatting with 2 decimals.",
+        "selector": "[data-testid='quote-total']",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_public_booking.py",
+    "/app/test_reports/pytest/iter3_results.xml"
+  ],
+  "action_items": [
+    "Fix /api/public/quote to return HTTP 400 when check_out <= check_in (nights_between clamps to 1, defeating the guard).",
+    "Display quote amounts with 2 decimal places so UI total matches Stripe Checkout exactly.",
+    "(Optional) prune additional internal property fields from /api/public/properties response."
+  ],
+  "critical_code_review_comments": [
+    "server.py is ~1060 lines — consider splitting (auth, public, bookings, accounting) into modules for maintainability.",
+    "_finalize_payment swallows 409 (dates became unavailable) and just marks txn as needs_review with no automated refund/notification — manual ops follow-up required.",
+    "guest lookup by name in _create_booking_record (db.guests.find_one({'name': guest_name})) is brittle — two different guests with the same full name will be merged. Should match by email when available.",
+    "/api/public/properties leaks property-level commission-related fields by omission only; safer to explicitly whitelist public fields."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_public_booking.py (created)"
+  ],
+  "success_rate": {
+    "backend": "94% (16/17)",
+    "frontend": "100% of testable flow (Stripe redirect verified; hosted card-entry page is outside our automation scope)"
+  },
+  "test_credentials": "Manager: manager@coastline.com / Manager123 (verified working). Stripe test card 4242 4242 4242 4242 for hosted page.",
+  "seed_data_creation": "Tests use TEST_-prefixed guests and cancel temp bookings on teardown. One paid Stripe test session (cs_test_a1fgEk0N7bUcmqTLQHagvPlsJ7emvPjSoXel...) was created but NOT completed; payment_transactions row remains in 'pending' state.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test baseline now includes /app/backend/tests/test_public_booking.py covering public listing, quote, checkout-session creation, idempotent status polling, overlap 409, and manager regression. To verify the post-payment side effects (booking + ledger + housekeeping creation, idempotency under repeated GET /status calls after paid), one needs to complete the Stripe hosted checkout with card 4242 4242 4242 4242 — Playwright cannot easily reach inside Stripe's iframe. Recommend either (a) a manual completion + re-poll, or (b) using the Stripe webhook event simulator to trigger _finalize_payment. Public site UI flow up to Stripe redirect is fully verified working.",
+  "rca of the issue": "Quote endpoint returns 200 for reversed dates because nights_between() returns max(1, (d2-d1).days). Repro: GET /api/public/quote?property_id=...&check_in=2027-09-15&check_out=2027-09-10 → 200 with nights=1. Fix: in /public/quote compute raw days, if days<1 raise HTTPException(400)."
+}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth, formatApiErrorDetail } from "@/context/AuthContext";
 import { Waves, ArrowRight } from "lucide-react";
 
@@ -56,7 +56,8 @@ export default function Login() {
 
           <h1 className="font-display text-4xl font-bold tracking-tight text-[#0A2540]">Welcome back</h1>
           <p className="text-[#6B7280] mt-3 text-base">
-            Property management built for the Southeast coast.
+            Property management built for the Southeast coast.{" "}
+            <Link to="/book" data-testid="public-book-link" className="text-[#0066FF] font-semibold hover:underline">Book a stay →</Link>
           </p>
 
           <form onSubmit={submit} className="mt-8 space-y-4">
