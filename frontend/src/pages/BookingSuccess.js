@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { api, fmtMoney, fmtDate } from "@/lib/api";
+import { api, fmtMoney, fmtMoneyExact, fmtDate } from "@/lib/api";
 import { Waves, CheckCircle2, Loader2, XCircle, ArrowLeft } from "lucide-react";
 
 const MAX_ATTEMPTS = 8;
@@ -70,7 +70,7 @@ export default function BookingSuccess() {
                 <div className="font-semibold text-[#0A2540]">{info.booking.property_name}</div>
                 <div className="text-sm text-[#6B7280] mt-1">{fmtDate(info.booking.check_in)} → {fmtDate(info.booking.check_out)} · {info.booking.nights} nights</div>
                 <div className="text-sm text-[#6B7280]">Guest · {info.booking.guest_name}</div>
-                <div className="mt-2 pt-2 border-t border-[#E5E7EB] flex justify-between font-semibold text-[#0A2540]"><span>Paid</span><span>{fmtMoney(info.amount)}</span></div>
+                <div className="mt-2 pt-2 border-t border-[#E5E7EB] flex justify-between font-semibold text-[#0A2540]"><span>Paid</span><span>{fmtMoneyExact(info.amount)}</span></div>
               </div>
             )}
             <Link to="/book" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#0066FF]"><ArrowLeft className="h-4 w-4" /> Back to homes</Link>

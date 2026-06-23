@@ -15,6 +15,10 @@ export function fmtMoney(n) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n || 0);
 }
 
+export function fmtMoneyExact(n) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
+}
+
 export function fmtDate(s) {
   if (!s) return "";
   return new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric" });

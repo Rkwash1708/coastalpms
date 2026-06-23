@@ -877,9 +877,10 @@ async def public_quote(property_id: str, check_in: str, check_out: str):
     prop = await db.properties.find_one({"id": property_id}, {"_id": 0})
     if not prop:
         raise HTTPException(status_code=404, detail="Property not found")
-    nights = nights_between(check_in, check_out)
-    if nights < 1:
+    raw_days = (datetime.fromisoformat(check_out) - datetime.fromisoformat(check_in)).days
+    if raw_days < 1:
         raise HTTPException(status_code=400, detail="Check-out must be after check-in")
+    nights = raw_days
     splits, total = guest_total(prop, nights)
     # availability (does not raise — returns flag)
     available = True

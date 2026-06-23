@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, fmtMoney } from "@/lib/api";
+import { api, fmtMoney, fmtMoneyExact } from "@/lib/api";
 import {
   Waves, MapPin, BedDouble, Bath, CalendarRange, ArrowRight, X, Lock, ShieldCheck,
 } from "lucide-react";
@@ -141,10 +141,10 @@ export default function BookingSite() {
               <div data-testid="quote-breakdown" className="mt-5 rounded-xl border border-[#E5E7EB] p-4">
                 {quote.available ? (
                   <>
-                    <div className="flex justify-between text-sm py-1"><span className="text-[#6B7280]">{fmtMoney(quote.nightly)} × {quote.nights} nights</span><span className="text-[#111827]">{fmtMoney(quote.accommodation)}</span></div>
-                    <div className="flex justify-between text-sm py-1"><span className="text-[#6B7280]">Cleaning fee</span><span className="text-[#111827]">{fmtMoney(quote.cleaning_fee)}</span></div>
-                    <div className="flex justify-between text-sm py-1"><span className="text-[#6B7280]">Occupancy tax</span><span className="text-[#111827]">{fmtMoney(quote.occupancy_tax)}</span></div>
-                    <div className="flex justify-between text-base font-semibold py-2 mt-1 border-t border-[#E5E7EB]"><span className="text-[#0A2540]">Total</span><span data-testid="quote-total" className="text-[#0A2540]">{fmtMoney(quote.total)}</span></div>
+                    <div className="flex justify-between text-sm py-1"><span className="text-[#6B7280]">{fmtMoney(quote.nightly)} × {quote.nights} nights</span><span className="text-[#111827]">{fmtMoneyExact(quote.accommodation)}</span></div>
+                    <div className="flex justify-between text-sm py-1"><span className="text-[#6B7280]">Cleaning fee</span><span className="text-[#111827]">{fmtMoneyExact(quote.cleaning_fee)}</span></div>
+                    <div className="flex justify-between text-sm py-1"><span className="text-[#6B7280]">Occupancy tax</span><span className="text-[#111827]">{fmtMoneyExact(quote.occupancy_tax)}</span></div>
+                    <div className="flex justify-between text-base font-semibold py-2 mt-1 border-t border-[#E5E7EB]"><span className="text-[#0A2540]">Total</span><span data-testid="quote-total" className="text-[#0A2540]">{fmtMoneyExact(quote.total)}</span></div>
                   </>
                 ) : (
                   <div data-testid="quote-unavailable" className="text-sm text-[#FF5A5F] flex items-center gap-2"><CalendarRange className="h-4 w-4" /> Those dates are not available. Try different dates.</div>
@@ -160,7 +160,7 @@ export default function BookingSite() {
               disabled={loading || !quote?.available || !form.guest_name || !form.guest_email}
               className="mt-5 w-full flex items-center justify-center gap-2 rounded-lg bg-[#0066FF] text-white font-semibold py-3.5 hover:bg-[#0052cc] transition-colors disabled:opacity-50"
             >
-              <Lock className="h-4 w-4" /> {loading ? "Redirecting…" : quote ? `Pay ${fmtMoney(quote.total)} & Book` : "Pay & Book"}
+              <Lock className="h-4 w-4" /> {loading ? "Redirecting…" : quote ? `Pay ${fmtMoneyExact(quote.total)} & Book` : "Pay & Book"}
             </button>
             <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-[#6B7280]"><ShieldCheck className="h-3.5 w-3.5" /> Secure checkout powered by Stripe</div>
           </div>

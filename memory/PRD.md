@@ -34,7 +34,8 @@ Modern, cloud-based Property Management Software for small-to-medium Vacation Re
 - **Reservations & Central Calendar**: multi-property availability grid, create booking (auto-bills split-ledger + auto-creates housekeeping turnover), booking/owner-hold overlap protection (409), upcoming arrivals
 - **Guest CRM**: 14 seeded guests ranked by lifetime value, profile drawer with stay history + editable notes
 - **Reporting & Analytics**: Occupancy %, ADR, RevPAR, Avg LOS, revenue-by-month bar, revenue-by-channel pie, property leaderboard
-- Verified: iteration_1 26/26 + iteration_2 41/41 backend tests pass; all critical frontend flows pass
+- **Public direct-booking website + Stripe Checkout** (`/book`): guests browse properties, get a server-computed quote, pay via Stripe; on payment success the booking is created idempotently (auto-bills split-ledger + housekeeping turnover). `payment_transactions` collection tracks status; lazy finalize via status polling + `/api/webhook/stripe`.
+- Verified: iteration_1 26/26 + iteration_2 41/41 + iteration_3 public-booking/Stripe backend tests pass; public site UI verified through Stripe redirect
 
 ## Backlog (prioritized)
 - P1: GPS tracking for storm-dispatched field staff (problem statement mentions it)
